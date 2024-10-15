@@ -1,0 +1,69 @@
+package org.example.springlock.optimistic;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.OptimisticLockingFailureException;
+
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+@SpringBootTest
+class OptimisticCounterServiceTest {
+
+    @Autowired
+    private OptimisticCounterService optimisticCounterService;
+
+    private Long optimisticCounterId;
+
+    @BeforeEach
+    public void setup() {
+        OptimisticCounter optimisticCounter = new OptimisticCounter();
+        optimisticCounter.setCount(0);
+        OptimisticCounter savedOptimisticCounter = optimisticCounterService.saveCounter(optimisticCounter);
+        optimisticCounterId = savedOptimisticCounter.getId();
+    }
+
+    @Test
+    public void testOptimisticLock() throws InterruptedException {
+        int testCount = 1000;
+        ExecutorService executorService = Executors.newFixedThreadPool(10);
+        CountDownLatch latch = new CountDownLatch(testCount);
+
+        // 예외 발생 횟수를 추적하기 위한 변수
+        AtomicInteger optimisticLockExceptionCount = new AtomicInteger(0);
+
+        for (int i = 0; i < testCount; i++) {
+            executorService.submit(() -> {
+                try {
+                    optimisticCounterService.incrementCount(optimisticCounterId);
+                } catch (OptimisticLockingFailureException e) {
+                    // 낙관적 락 충돌 발생 시 처리 및 예외 카운트 증가
+                    optimisticLockExceptionCount.incrementAndGet();
+                } finally {
+                    latch.countDown();
+                }
+            });
+        }
+
+        latch.await(); // 모든 스레드가 작업을 완료할 때까지 대기
+        executorService.shutdown();
+
+        // 하나 이상의 OptimisticLockingFailureException 발생해야 함
+        assertTrue(optimisticLockExceptionCount.get() > 0);
+
+        int finalCount = optimisticCounterService.getCounterById(optimisticCounterId).getCount();
+        int testedTotalCount = optimisticLockExceptionCount.get() + finalCount;
+        assertEquals(testedTotalCount, testCount);
+
+        System.out.println("발생한 예외 수: " + optimisticLockExceptionCount.get());
+        System.out.println("최종 count: " + finalCount);
+        System.out.println("testCount: " + testCount + ", testedTotalCount: " + testedTotalCount);
+    }
+}
