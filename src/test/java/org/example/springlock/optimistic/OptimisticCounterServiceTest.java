@@ -39,6 +39,8 @@ class OptimisticCounterServiceTest {
         // 예외 발생 횟수를 추적하기 위한 변수
         AtomicInteger optimisticLockExceptionCount = new AtomicInteger(0);
 
+        long startTime = System.currentTimeMillis();
+
         for (int i = 0; i < testCount; i++) {
             executorService.submit(() -> {
                 try {
@@ -55,6 +57,10 @@ class OptimisticCounterServiceTest {
         latch.await(); // 모든 스레드가 작업을 완료할 때까지 대기
         executorService.shutdown();
 
+        long endTime = System.currentTimeMillis();
+        long durationInMillis = endTime - startTime;
+        double durationInSeconds = durationInMillis / 1000.0;
+
         // 하나 이상의 OptimisticLockingFailureException 발생해야 함
         assertTrue(optimisticLockExceptionCount.get() > 0);
 
@@ -64,6 +70,7 @@ class OptimisticCounterServiceTest {
 
         System.out.println("발생한 예외 수: " + optimisticLockExceptionCount.get());
         System.out.println("최종 count: " + finalCount);
+        System.out.println("테스트 실행 시간: " + durationInSeconds + "초");
         System.out.println("testCount: " + testCount + ", testedTotalCount: " + testedTotalCount);
     }
 }
